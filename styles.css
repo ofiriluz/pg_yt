@@ -152,6 +152,16 @@ body.fullscreen-mode {
     color: white;
 }
 
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-warning {
+    background: #fd7e14;
+    color: white;
+}
+
 .btn-fullscreen {
     background: #ffc107;
     color: #333;

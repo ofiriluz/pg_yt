@@ -7,6 +7,7 @@ class YouTubeMultiViewer {
         this.currentVideoFullscreen = null;
         this.defaultProfile = null;
         this.editingVideoId = null;
+        this.iframeReadyStates = new Map(); // Track which iframes are ready
         
         this.initializeElements();
         this.bindEvents();
@@ -14,6 +15,7 @@ class YouTubeMultiViewer {
         this.loadDefaultProfile();
         this.autoLoadDefaultProfile();
         this.updateGrid();
+        this.setupYouTubeAPIListener();
     }
 
     // Initialize DOM elements
@@ -32,6 +34,8 @@ class YouTubeMultiViewer {
         
         // Control elements
         this.addVideosBtn = document.getElementById('addVideos');
+        this.playAllBtn = document.getElementById('playAll');
+        this.stopAllBtn = document.getElementById('stopAll');
         this.clearAllBtn = document.getElementById('clearAll');
         this.fullscreenBtn = document.getElementById('fullscreenBtn');
         
@@ -66,6 +70,8 @@ class YouTubeMultiViewer {
 
         // Video management
         this.addVideosBtn.addEventListener('click', () => this.showVideoModal());
+        this.playAllBtn.addEventListener('click', () => this.playAllVideos());
+        this.stopAllBtn.addEventListener('click', () => this.stopAllVideos());
         this.clearAllBtn.addEventListener('click', () => this.clearAllVideos());
         
         // Profile management
@@ -131,6 +137,39 @@ class YouTubeMultiViewer {
         document.addEventListener('MSFullscreenChange', () => this.handleFullscreenChange());
     }
 
+    // Setup YouTube iframe API message listener
+    setupYouTubeAPIListener() {
+        window.addEventListener('message', (event) => {
+            // Debug: Log all messages from YouTube
+            if (event.origin === 'https://www.youtube.com') {
+                console.log('YouTube message received:', event.data);
+            }
+            
+            if (event.origin !== 'https://www.youtube.com') return;
+            
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Parsed YouTube data:', data);
+                
+                // Track iframe readiness for various events
+                if (data.event === 'video-progress' || data.event === 'onReady' || data.event === 'onStateChange') {
+                    const iframe = Array.from(document.querySelectorAll('iframe')).find(
+                        iframe => iframe.contentWindow === event.source
+                    );
+                    if (iframe) {
+                        console.log('Marking iframe as ready:', iframe.id);
+                        this.iframeReadyStates.set(iframe, true);
+                    }
+                }
+            } catch (e) {
+                // Log non-JSON messages for debugging
+                console.log('Non-JSON message from YouTube:', event.data);
+            }
+        });
+        
+        console.log('YouTube API message listener setup complete');
+    }
+
     // Utility Functions
     extractVideoId(url) {
         // More comprehensive patterns to handle various YouTube URL formats
@@ -167,9 +206,16 @@ class YouTubeMultiViewer {
         return { cols, rows, total: cols * rows };
     }
 
-    getOptimalEmbedUrl(videoId) {
-        // Use the simplest embed URL that typically works
-        return `https://www.youtube.com/embed/${videoId}`;
+    getOptimalEmbedUrl(videoInfo) {
+        if (typeof videoInfo === 'string') {
+            // Backward compatibility - assume YouTube
+            const origin = encodeURIComponent(window.location.origin);
+            return `https://www.youtube.com/embed/${videoInfo}?enablejsapi=1&origin=${origin}&autoplay=0&controls=1&rel=0&enablejsapi=1`;
+        }
+        
+        // Default to YouTube with JavaScript API enabled for Play/Stop functionality
+        const origin = encodeURIComponent(window.location.origin);
+        return `https://www.youtube.com/embed/${videoInfo.id}?enablejsapi=1&origin=${origin}&autoplay=0&controls=1&rel=0&enablejsapi=1`;
     }
 
     // Video Management
@@ -232,6 +278,99 @@ class YouTubeMultiViewer {
         if (confirm('Are you sure you want to clear all videos?')) {
             this.videos = [];
             this.updateGrid();
+        }
+    }
+
+    // Play all videos
+    playAllVideos() {
+        const iframes = this.videoGrid.querySelectorAll('iframe');
+        let commandsSent = 0;
+        let attemptsCount = 0;
+        
+        iframes.forEach((iframe, index) => {
+            // Check if it's a YouTube iframe
+            if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+                attemptsCount++;
+                
+                const sendPlayCommand = () => {
+                    try {
+                        // Multiple command formats to ensure compatibility
+                        const commands = [
+                            '{"event":"command","func":"playVideo","args":""}',
+                            JSON.stringify({"event":"command","func":"playVideo","args":[]}),
+                            JSON.stringify({"event":"command","func":"playVideo"})
+                        ];
+                        
+                        commands.forEach(command => {
+                            iframe.contentWindow.postMessage(command, 'https://www.youtube.com');
+                        });
+                        
+                        // Also try the direct API call
+                        iframe.contentWindow.postMessage('{"event":"listening"}', 'https://www.youtube.com');
+                        
+                        commandsSent++;
+                    } catch (error) {
+                        console.warn('Failed to send play command to iframe:', error);
+                    }
+                };
+
+                // Try sending immediately and with delays
+                sendPlayCommand();
+                setTimeout(sendPlayCommand, 500);
+                setTimeout(sendPlayCommand, 1000);
+            }
+        });
+        
+        if (attemptsCount > 0) {
+            this.showNotification(`Attempting to play ${attemptsCount} YouTube video(s)...`);
+            console.log(`Play commands sent to ${commandsSent} iframe(s)`);
+        } else {
+            this.showNotification('No YouTube videos found to play');
+        }
+    }
+
+    // Stop/pause all videos
+    stopAllVideos() {
+        const iframes = this.videoGrid.querySelectorAll('iframe');
+        let commandsSent = 0;
+        let attemptsCount = 0;
+        
+        iframes.forEach((iframe, index) => {
+            // Check if it's a YouTube iframe
+            if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+                attemptsCount++;
+                
+                const sendPauseCommand = () => {
+                    try {
+                        // Multiple command formats to ensure compatibility
+                        const commands = [
+                            '{"event":"command","func":"pauseVideo","args":""}',
+                            JSON.stringify({"event":"command","func":"pauseVideo","args":[]}),
+                            JSON.stringify({"event":"command","func":"pauseVideo"})
+                        ];
+                        
+                        commands.forEach(command => {
+                            iframe.contentWindow.postMessage(command, 'https://www.youtube.com');
+                        });
+                        
+                        commandsSent++;
+                    } catch (error) {
+                        console.warn('Failed to send pause command to iframe:', error);
+                    }
+                };
+
+                // Try sending immediately and with delays
+                sendPauseCommand();
+                setTimeout(sendPauseCommand, 500);
+                setTimeout(sendPauseCommand, 1000);
+            }
+        });
+        
+        if (attemptsCount > 0) {
+            this.showNotification(`Attempting to pause ${attemptsCount} YouTube video(s)...`);
+            console.log(`Pause commands sent to ${commandsSent} iframe(s)`);
+        } else {
+            this.showNotification('No YouTube videos found to pause');
         }
     }
 
@@ -406,15 +545,23 @@ class YouTubeMultiViewer {
         const container = document.createElement('div');
         container.className = 'video-container';
         
-        // Use the simplest embed URL
-        const embedUrl = this.getOptimalEmbedUrl(video.id);
+        // Create video info object for embed URL generation
+        const videoInfo = {
+            type: video.type || 'youtube',
+            id: video.id,
+            originalUrl: video.url
+        };
+        
+        const embedUrl = this.getOptimalEmbedUrl(videoInfo);
         
         container.innerHTML = `
             <iframe
+                id="youtube-iframe-${video.id}"
                 src="${embedUrl}"
                 title="${video.title}"
                 frameborder="0"
-                allowfullscreen>
+                allowfullscreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
             </iframe>
             <div class="video-controls">
                 <button class="video-control-btn" onclick="app.editVideoUrl('${video.id}')" title="Edit URL">
@@ -791,6 +938,20 @@ class YouTubeMultiViewer {
                 if (event.ctrlKey || event.metaKey) {
                     event.preventDefault();
                     this.showVideoModal();
+                }
+                break;
+            case 'p':
+            case 'P':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.playAllVideos();
+                }
+                break;
+            case 's':
+            case 'S':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.stopAllVideos();
                 }
                 break;
             case 'c':
