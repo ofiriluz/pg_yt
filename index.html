@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Multi-Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Header Controls -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fab fa-youtube"></i> YouTube Multi-Viewer</h1>
+                
+                <div class="controls">
+                    <!-- Profile Management -->
+                    <div class="profile-section">
+                        <select id="profileSelect" class="profile-select">
+                            <option value="">Select Profile</option>
+                        </select>
+                        <input type="text" id="profileName" placeholder="Profile name..." class="profile-input">
+                        <button id="saveProfile" class="btn btn-save">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                        <button id="loadProfile" class="btn btn-load">
+                            <i class="fas fa-folder-open"></i> Load
+                        </button>
+                        <button id="deleteProfile" class="btn btn-delete">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                        <button id="setDefaultProfile" class="btn btn-default">
+                            <i class="fas fa-star"></i> Set Default
+                        </button>
+                    </div>
+                    
+                    <!-- Grid Controls -->
+                    <div class="grid-controls">
+                        <label for="gridSize">Grid Size:</label>
+                        <select id="gridSize" class="grid-select">
+                            <option value="1x1">1×1</option>
+                            <option value="1x2">1×2</option>
+                            <option value="2x1">2×1</option>
+                            <option value="2x2" selected>2×2</option>
+                            <option value="2x3">2×3</option>
+                            <option value="3x2">3×2</option>
+                            <option value="3x3">3×3</option>
+                            <option value="4x4">4×4</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <button id="addVideos" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Videos
+                        </button>
+                        <button id="clearAll" class="btn btn-secondary">
+                            <i class="fas fa-eraser"></i> Clear All
+                        </button>
+                        <button id="fullscreenBtn" class="btn btn-fullscreen">
+                            <i class="fas fa-expand"></i> Fullscreen
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Video Input Modal -->
+        <div id="videoModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Add YouTube Videos</h3>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p>Enter YouTube URLs (one per line):</p>
+                    <textarea id="videoUrls" placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=...&#10;https://youtu.be/..."></textarea>
+                    <div class="modal-actions">
+                        <button id="confirmVideos" class="btn btn-primary">Add Videos</button>
+                        <button id="cancelVideos" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Video URL Modal -->
+        <div id="editVideoModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Video URL</h3>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p>Enter new YouTube URL:</p>
+                    <input type="text" id="editVideoUrl" placeholder="https://www.youtube.com/watch?v=..." class="edit-url-input">
+                    <div class="current-video-info">
+                        <p><strong>Current video:</strong> <span id="currentVideoTitle"></span></p>
+                        <p><strong>Current URL:</strong> <span id="currentVideoUrl"></span></p>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="confirmEditVideo" class="btn btn-primary">Update Video</button>
+                        <button id="cancelEditVideo" class="btn btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Grid Container -->
+        <main class="main-content">
+            <div id="videoGrid" class="video-grid">
+                <!-- Video iframes will be generated here -->
+            </div>
+        </main>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-info">
+                <span id="videoCount">0 videos loaded</span>
+                <span id="gridInfo">Grid: 2×2</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

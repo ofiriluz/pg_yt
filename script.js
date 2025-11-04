@@ -1,0 +1,871 @@
+// YouTube Multi-Viewer Application
+class YouTubeMultiViewer {
+    constructor() {
+        this.videos = [];
+        this.currentGrid = '2x2';
+        this.profiles = {};
+        this.currentVideoFullscreen = null;
+        this.defaultProfile = null;
+        this.editingVideoId = null;
+        
+        this.initializeElements();
+        this.bindEvents();
+        this.loadProfiles();
+        this.loadDefaultProfile();
+        this.autoLoadDefaultProfile();
+        this.updateGrid();
+    }
+
+    // Initialize DOM elements
+    initializeElements() {
+        // Grid elements
+        this.videoGrid = document.getElementById('videoGrid');
+        this.gridSizeSelect = document.getElementById('gridSize');
+        
+        // Profile elements
+        this.profileSelect = document.getElementById('profileSelect');
+        this.profileNameInput = document.getElementById('profileName');
+        this.saveProfileBtn = document.getElementById('saveProfile');
+        this.loadProfileBtn = document.getElementById('loadProfile');
+        this.deleteProfileBtn = document.getElementById('deleteProfile');
+        this.setDefaultProfileBtn = document.getElementById('setDefaultProfile');
+        
+        // Control elements
+        this.addVideosBtn = document.getElementById('addVideos');
+        this.clearAllBtn = document.getElementById('clearAll');
+        this.fullscreenBtn = document.getElementById('fullscreenBtn');
+        
+        // Modal elements
+        this.videoModal = document.getElementById('videoModal');
+        this.videoUrlsTextarea = document.getElementById('videoUrls');
+        this.confirmVideosBtn = document.getElementById('confirmVideos');
+        this.cancelVideosBtn = document.getElementById('cancelVideos');
+        this.modalClose = document.querySelector('.close');
+        
+        // Edit video modal elements
+        this.editVideoModal = document.getElementById('editVideoModal');
+        this.editVideoUrlInput = document.getElementById('editVideoUrl');
+        this.confirmEditVideoBtn = document.getElementById('confirmEditVideo');
+        this.cancelEditVideoBtn = document.getElementById('cancelEditVideo');
+        this.editModalClose = this.editVideoModal.querySelector('.close');
+        this.currentVideoTitleSpan = document.getElementById('currentVideoTitle');
+        this.currentVideoUrlSpan = document.getElementById('currentVideoUrl');
+        
+        // Status elements
+        this.videoCountSpan = document.getElementById('videoCount');
+        this.gridInfoSpan = document.getElementById('gridInfo');
+    }
+
+    // Bind event listeners
+    bindEvents() {
+        // Grid controls
+        this.gridSizeSelect.addEventListener('change', () => {
+            this.currentGrid = this.gridSizeSelect.value;
+            this.updateGrid();
+        });
+
+        // Video management
+        this.addVideosBtn.addEventListener('click', () => this.showVideoModal());
+        this.clearAllBtn.addEventListener('click', () => this.clearAllVideos());
+        
+        // Profile management
+        this.saveProfileBtn.addEventListener('click', () => this.saveCurrentProfile());
+        this.loadProfileBtn.addEventListener('click', () => this.loadSelectedProfile());
+        this.deleteProfileBtn.addEventListener('click', () => this.deleteSelectedProfile());
+        this.setDefaultProfileBtn.addEventListener('click', () => this.toggleDefaultProfile());
+        this.profileSelect.addEventListener('change', () => this.updateProfileButtons());
+        
+        // Modal controls
+        this.confirmVideosBtn.addEventListener('click', () => this.addVideosFromModal());
+        this.cancelVideosBtn.addEventListener('click', () => this.hideVideoModal());
+        this.modalClose.addEventListener('click', () => this.hideVideoModal());
+        
+        // Edit video modal controls
+        this.confirmEditVideoBtn.addEventListener('click', () => this.confirmEditVideo());
+        this.cancelEditVideoBtn.addEventListener('click', () => this.hideEditVideoModal());
+        this.editModalClose.addEventListener('click', () => this.hideEditVideoModal());
+        
+        // Fullscreen
+        this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        
+        // Modal backdrop click
+        this.videoModal.addEventListener('click', (e) => {
+            if (e.target === this.videoModal) {
+                this.hideVideoModal();
+            }
+        });
+        
+        this.editVideoModal.addEventListener('click', (e) => {
+            if (e.target === this.editVideoModal) {
+                this.hideEditVideoModal();
+            }
+        });
+
+        // Add escape key listener directly to the edit modal
+        this.editVideoModal.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.hideEditVideoModal();
+            }
+        });
+
+        // Enter key support for edit input
+        this.editVideoUrlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                this.confirmEditVideo();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.hideEditVideoModal();
+            }
+        });
+
+        // Fullscreen change events
+        document.addEventListener('fullscreenchange', () => this.handleFullscreenChange());
+        document.addEventListener('webkitfullscreenchange', () => this.handleFullscreenChange());
+        document.addEventListener('mozfullscreenchange', () => this.handleFullscreenChange());
+        document.addEventListener('MSFullscreenChange', () => this.handleFullscreenChange());
+    }
+
+    // Utility Functions
+    extractVideoId(url) {
+        // More comprehensive patterns to handle various YouTube URL formats
+        const patterns = [
+            // Standard watch URLs: youtube.com/watch?v=VIDEO_ID
+            /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:[&?].*)?/,
+            // Short URLs: youtu.be/VIDEO_ID
+            /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?].*)?/,
+            // Embed URLs: youtube.com/embed/VIDEO_ID
+            /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})(?:[?].*)?/,
+            // Old format: youtube.com/v/VIDEO_ID
+            /(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})(?:[?].*)?/,
+            // Mobile URLs: m.youtube.com/watch?v=VIDEO_ID
+            /(?:m\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:[&?].*)?/,
+            // Gaming URLs: gaming.youtube.com/watch?v=VIDEO_ID
+            /(?:gaming\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:[&?].*)?/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match && match[1]) {
+                return match[1];
+            }
+        }
+        return null;
+    }
+
+    validateYouTubeUrl(url) {
+        return this.extractVideoId(url) !== null;
+    }
+
+    getGridDimensions(gridSize) {
+        const [cols, rows] = gridSize.split('x').map(Number);
+        return { cols, rows, total: cols * rows };
+    }
+
+    getOptimalEmbedUrl(videoId) {
+        // Use the simplest embed URL that typically works
+        return `https://www.youtube.com/embed/${videoId}`;
+    }
+
+    // Video Management
+    showVideoModal() {
+        this.videoModal.style.display = 'block';
+        this.videoUrlsTextarea.focus();
+    }
+
+    hideVideoModal() {
+        this.videoModal.style.display = 'none';
+        this.videoUrlsTextarea.value = '';
+    }
+
+    addVideosFromModal() {
+        const urls = this.videoUrlsTextarea.value
+            .split('\n')
+            .map(url => url.trim())
+            .filter(url => url && this.validateYouTubeUrl(url));
+
+        if (urls.length === 0) {
+            alert('Please enter valid YouTube URLs');
+            return;
+        }
+
+        const { total } = this.getGridDimensions(this.currentGrid);
+        const availableSlots = total - this.videos.length;
+
+        if (urls.length > availableSlots) {
+            const proceed = confirm(
+                `You can only add ${availableSlots} more videos to the current grid. ` +
+                `Do you want to add the first ${availableSlots} videos?`
+            );
+            if (!proceed) return;
+            urls.splice(availableSlots);
+        }
+
+        urls.forEach(url => {
+            const videoId = this.extractVideoId(url);
+            if (videoId && !this.videos.find(v => v.id === videoId)) {
+                this.videos.push({
+                    id: videoId,
+                    url: url,
+                    title: `Video ${this.videos.length + 1}`
+                });
+            }
+        });
+
+        this.updateGrid();
+        this.hideVideoModal();
+    }
+
+    removeVideo(videoId) {
+        this.videos = this.videos.filter(video => video.id !== videoId);
+        this.updateGrid();
+    }
+
+    clearAllVideos() {
+        if (this.videos.length === 0) return;
+        
+        if (confirm('Are you sure you want to clear all videos?')) {
+            this.videos = [];
+            this.updateGrid();
+        }
+    }
+
+    // Edit video URL functionality
+    editVideoUrl(videoId) {
+        const video = this.videos.find(v => v.id === videoId);
+        if (!video) return;
+        
+        this.editingVideoId = videoId;
+        
+        // Set current video info
+        this.currentVideoTitleSpan.textContent = video.title;
+        this.currentVideoUrlSpan.textContent = video.url || `https://www.youtube.com/watch?v=${videoId}`;
+        
+        // Set current URL in input
+        this.editVideoUrlInput.value = video.url || `https://www.youtube.com/watch?v=${videoId}`;
+        
+        // Show modal
+        this.showEditVideoModal();
+    }
+
+    showEditVideoModal() {
+        this.editVideoModal.style.display = 'block';
+        
+        // Ensure modal can receive keyboard events
+        this.editVideoModal.tabIndex = -1;
+        
+        // Focus the input and select its content
+        setTimeout(() => {
+            this.editVideoUrlInput.focus();
+            this.editVideoUrlInput.select();
+        }, 100);
+    }
+
+    hideEditVideoModal() {
+        this.editVideoModal.style.display = 'none';
+        this.editVideoUrlInput.value = '';
+        this.editingVideoId = null;
+    }
+
+    confirmEditVideo() {
+        const newUrl = this.editVideoUrlInput.value.trim();
+        
+        if (!newUrl) {
+            alert('Please enter a YouTube URL');
+            return;
+        }
+        
+        if (!this.validateYouTubeUrl(newUrl)) {
+            alert('Please enter a valid YouTube URL');
+            this.editVideoUrlInput.focus();
+            return;
+        }
+        
+        const newVideoId = this.extractVideoId(newUrl);
+        if (!newVideoId) {
+            alert('Could not extract video ID from URL');
+            return;
+        }
+        
+        // Check if this video ID already exists (and it's not the same video we're editing)
+        const existingVideo = this.videos.find(v => v.id === newVideoId && v.id !== this.editingVideoId);
+        if (existingVideo) {
+            alert('This video is already in the grid');
+            return;
+        }
+        
+        // Update the video
+        const videoIndex = this.videos.findIndex(v => v.id === this.editingVideoId);
+        if (videoIndex !== -1) {
+            this.videos[videoIndex] = {
+                id: newVideoId,
+                url: newUrl,
+                title: `Video ${videoIndex + 1}`
+            };
+            
+            this.updateGrid();
+            this.hideEditVideoModal();
+            this.showNotification('Video URL updated successfully!');
+        }
+    }
+
+    // Copy video URL functionality
+    copyVideoUrl(videoId) {
+        const video = this.videos.find(v => v.id === videoId);
+        if (!video) return;
+        
+        const url = video.url || `https://www.youtube.com/watch?v=${videoId}`;
+        
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(url).then(() => {
+                this.showNotification('Video URL copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy URL:', err);
+                this.fallbackCopyText(url);
+            });
+        } else {
+            this.fallbackCopyText(url);
+        }
+    }
+
+    fallbackCopyText(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            this.showNotification('Video URL copied to clipboard!');
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            this.showNotification('Failed to copy URL');
+        }
+        
+        textArea.remove();
+    }
+
+    // Grid Management
+    updateGrid() {
+        const { cols, rows, total } = this.getGridDimensions(this.currentGrid);
+        
+        // Update CSS class
+        this.videoGrid.className = `video-grid grid-${this.currentGrid}`;
+        
+        // Clear existing content
+        this.videoGrid.innerHTML = '';
+
+        if (this.videos.length === 0) {
+            this.showEmptyState();
+        } else {
+            this.renderVideos(total);
+        }
+
+        this.updateStatus();
+    }
+
+    showEmptyState() {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'grid-placeholder';
+        placeholder.innerHTML = `
+            <i class="fab fa-youtube"></i>
+            <div>No videos loaded</div>
+            <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.7;">
+                Click "Add Videos" to get started
+            </div>
+        `;
+        this.videoGrid.appendChild(placeholder);
+    }
+
+    renderVideos(maxSlots) {
+        const videosToShow = this.videos.slice(0, maxSlots);
+        
+        videosToShow.forEach((video, index) => {
+            const container = this.createVideoContainer(video, index);
+            this.videoGrid.appendChild(container);
+        });
+
+        // Fill empty slots
+        const emptySlots = maxSlots - videosToShow.length;
+        for (let i = 0; i < emptySlots; i++) {
+            const emptyContainer = this.createEmptySlot(videosToShow.length + i);
+            this.videoGrid.appendChild(emptyContainer);
+        }
+    }
+
+    createVideoContainer(video, index) {
+        const container = document.createElement('div');
+        container.className = 'video-container';
+        
+        // Use the simplest embed URL
+        const embedUrl = this.getOptimalEmbedUrl(video.id);
+        
+        container.innerHTML = `
+            <iframe
+                src="${embedUrl}"
+                title="${video.title}"
+                frameborder="0"
+                allowfullscreen>
+            </iframe>
+            <div class="video-controls">
+                <button class="video-control-btn" onclick="app.editVideoUrl('${video.id}')" title="Edit URL">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="video-control-btn" onclick="app.copyVideoUrl('${video.id}')" title="Copy URL">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <button class="video-control-btn" onclick="app.toggleVideoFullscreen('${video.id}')" title="Fullscreen">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <button class="video-control-btn" onclick="app.removeVideo('${video.id}')" title="Remove">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        return container;
+    }
+
+    createEmptySlot(index) {
+        const container = document.createElement('div');
+        container.className = 'video-container';
+        container.style.background = 'rgba(255, 255, 255, 0.1)';
+        container.style.border = '2px dashed rgba(255, 255, 255, 0.3)';
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: rgba(255, 255, 255, 0.5); font-size: 0.9rem;">
+                <i class="fas fa-plus" style="margin-right: 0.5rem;"></i>
+                Empty Slot ${index + 1}
+            </div>
+        `;
+        return container;
+    }
+
+    // Profile Management
+    loadProfiles() {
+        try {
+            const saved = localStorage.getItem('youtube-multiviewer-profiles');
+            this.profiles = saved ? JSON.parse(saved) : {};
+            this.updateProfileSelect();
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+            this.profiles = {};
+        }
+    }
+
+    saveProfiles() {
+        try {
+            localStorage.setItem('youtube-multiviewer-profiles', JSON.stringify(this.profiles));
+        } catch (error) {
+            console.error('Error saving profiles:', error);
+            alert('Error saving profiles. Storage might be full.');
+        }
+    }
+
+    updateProfileSelect() {
+        const currentSelection = this.profileSelect.value;
+        this.profileSelect.innerHTML = '<option value="">Select Profile</option>';
+        
+        Object.keys(this.profiles).sort().forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            
+            // Add indicator for default profile
+            if (this.defaultProfile === name) {
+                option.textContent = `⭐ ${name} (Default)`;
+            } else {
+                option.textContent = name;
+            }
+            
+            this.profileSelect.appendChild(option);
+        });
+        
+        // Restore selection if it still exists
+        if (this.profiles[currentSelection]) {
+            this.profileSelect.value = currentSelection;
+        }
+        
+        this.updateProfileButtons();
+    }
+
+    updateProfileButtons() {
+        const hasSelection = this.profileSelect.value !== '';
+        const selectedProfile = this.profileSelect.value;
+        
+        this.loadProfileBtn.disabled = !hasSelection;
+        this.deleteProfileBtn.disabled = !hasSelection;
+        this.setDefaultProfileBtn.disabled = !hasSelection;
+        
+        // Update default profile button appearance
+        const isDefault = this.defaultProfile === selectedProfile;
+        this.setDefaultProfileBtn.classList.toggle('is-default', isDefault);
+        
+        if (isDefault) {
+            this.setDefaultProfileBtn.innerHTML = '<i class="fas fa-star"></i> Unset Default';
+            this.setDefaultProfileBtn.title = 'Remove as default profile';
+        } else {
+            this.setDefaultProfileBtn.innerHTML = '<i class="fas fa-star"></i> Set Default';
+            this.setDefaultProfileBtn.title = 'Set as default profile (auto-loads on refresh)';
+        }
+    }
+
+    saveCurrentProfile() {
+        const name = this.profileNameInput.value.trim();
+        
+        if (!name) {
+            alert('Please enter a profile name');
+            this.profileNameInput.focus();
+            return;
+        }
+
+        if (this.profiles[name]) {
+            if (!confirm(`Profile "${name}" already exists. Overwrite it?`)) {
+                return;
+            }
+        }
+
+        this.profiles[name] = {
+            videos: [...this.videos],
+            gridSize: this.currentGrid,
+            savedAt: new Date().toISOString()
+        };
+
+        this.saveProfiles();
+        this.updateProfileSelect();
+        this.profileSelect.value = name;
+        this.profileNameInput.value = '';
+        this.updateProfileButtons();
+
+        this.showNotification(`Profile "${name}" saved successfully!`);
+    }
+
+    loadSelectedProfile() {
+        const name = this.profileSelect.value;
+        if (!name || !this.profiles[name]) return;
+
+        const profile = this.profiles[name];
+        
+        if (this.videos.length > 0) {
+            if (!confirm('Loading this profile will replace current videos. Continue?')) {
+                return;
+            }
+        }
+
+        this.videos = [...profile.videos];
+        this.currentGrid = profile.gridSize;
+        this.gridSizeSelect.value = this.currentGrid;
+        
+        this.updateGrid();
+        this.showNotification(`Profile "${name}" loaded successfully!`);
+    }
+
+    deleteSelectedProfile() {
+        const name = this.profileSelect.value;
+        if (!name || !this.profiles[name]) return;
+
+        if (confirm(`Are you sure you want to delete profile "${name}"?`)) {
+            // If this is the default profile, unset it
+            if (this.defaultProfile === name) {
+                this.defaultProfile = null;
+                this.saveDefaultProfile();
+            }
+            
+            delete this.profiles[name];
+            this.saveProfiles();
+            this.updateProfileSelect();
+            this.showNotification(`Profile "${name}" deleted successfully!`);
+        }
+    }
+
+    toggleDefaultProfile() {
+        const selectedProfile = this.profileSelect.value;
+        if (!selectedProfile || !this.profiles[selectedProfile]) return;
+
+        if (this.defaultProfile === selectedProfile) {
+            // Unset as default
+            this.defaultProfile = null;
+            this.showNotification(`"${selectedProfile}" is no longer the default profile`);
+        } else {
+            // Set as default
+            this.defaultProfile = selectedProfile;
+            this.showNotification(`"${selectedProfile}" is now the default profile (will auto-load on refresh)`);
+        }
+        
+        this.saveDefaultProfile();
+        this.updateProfileButtons();
+    }
+
+    loadDefaultProfile() {
+        try {
+            const saved = localStorage.getItem('youtube-multiviewer-default-profile');
+            this.defaultProfile = saved || null;
+        } catch (error) {
+            console.error('Error loading default profile:', error);
+            this.defaultProfile = null;
+        }
+    }
+
+    saveDefaultProfile() {
+        try {
+            if (this.defaultProfile) {
+                localStorage.setItem('youtube-multiviewer-default-profile', this.defaultProfile);
+            } else {
+                localStorage.removeItem('youtube-multiviewer-default-profile');
+            }
+        } catch (error) {
+            console.error('Error saving default profile:', error);
+        }
+    }
+
+    autoLoadDefaultProfile() {
+        if (this.defaultProfile && this.profiles[this.defaultProfile]) {
+            // Only auto-load if we don't already have videos loaded
+            if (this.videos.length === 0) {
+                const profile = this.profiles[this.defaultProfile];
+                this.videos = [...profile.videos];
+                this.currentGrid = profile.gridSize;
+                this.gridSizeSelect.value = this.currentGrid;
+                this.profileSelect.value = this.defaultProfile;
+                this.updateProfileButtons();
+                
+                console.log(`Auto-loaded default profile: "${this.defaultProfile}"`);
+            }
+        }
+    }
+
+    // Fullscreen Management
+    toggleFullscreen() {
+        if (this.isFullscreen()) {
+            this.exitFullscreen();
+        } else {
+            this.enterFullscreen();
+        }
+    }
+
+    enterFullscreen() {
+        const element = document.documentElement;
+        
+        if (element.requestFullscreen) {
+            element.requestFullscreen();
+        } else if (element.webkitRequestFullscreen) {
+            element.webkitRequestFullscreen();
+        } else if (element.mozRequestFullScreen) {
+            element.mozRequestFullScreen();
+        } else if (element.msRequestFullscreen) {
+            element.msRequestFullscreen();
+        }
+    }
+
+    exitFullscreen() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    }
+
+    isFullscreen() {
+        return !!(document.fullscreenElement || 
+                 document.webkitFullscreenElement || 
+                 document.mozFullScreenElement || 
+                 document.msFullscreenElement);
+    }
+
+    handleFullscreenChange() {
+        const fullscreen = this.isFullscreen();
+        document.documentElement.classList.toggle('fullscreen-mode', fullscreen);
+        document.body.classList.toggle('fullscreen-mode', fullscreen);
+        
+        // Hide/show UI elements in fullscreen
+        const header = document.querySelector('.header');
+        const statusBar = document.querySelector('.status-bar');
+        const videoControls = document.querySelectorAll('.video-controls');
+        
+        if (fullscreen) {
+            // Force hide everything in fullscreen
+            header.style.display = 'none';
+            statusBar.style.display = 'none';
+            videoControls.forEach(control => control.style.display = 'none');
+            
+        } else {
+            header.style.display = 'block';
+            statusBar.style.display = 'block';
+            videoControls.forEach(control => control.style.display = 'flex');
+            
+            // If we were in single video fullscreen mode, exit it
+            if (this.currentVideoFullscreen) {
+                this.exitVideoFullscreen();
+            }
+        }
+        
+        // Update button icon if button exists
+        if (this.fullscreenBtn) {
+            const icon = this.fullscreenBtn.querySelector('i');
+            if (fullscreen) {
+                icon.className = 'fas fa-compress';
+                this.fullscreenBtn.title = 'Exit Fullscreen';
+            } else {
+                icon.className = 'fas fa-expand';
+                this.fullscreenBtn.title = 'Enter Fullscreen';
+            }
+        }
+    }
+
+    toggleVideoFullscreen(videoId) {
+        const container = document.querySelector(`iframe[src*="${videoId}"]`)?.parentElement;
+        if (!container) return;
+
+        // Check if we're already in video fullscreen mode
+        if (this.currentVideoFullscreen === videoId) {
+            this.exitFullscreen();
+        } else {
+            this.enterVideoFullscreen(container, videoId);
+        }
+    }
+
+    enterVideoFullscreen(container, videoId) {
+        // Store which video is going fullscreen
+        this.currentVideoFullscreen = videoId;
+        
+        // Hide all other videos and show only this one
+        this.videoGrid.querySelectorAll('.video-container').forEach(videoContainer => {
+            const iframe = videoContainer.querySelector('iframe');
+            const currentVideoId = iframe ? this.extractVideoIdFromSrc(iframe.src) : null;
+            
+            if (currentVideoId === videoId) {
+                videoContainer.classList.add('single-video-fullscreen');
+            } else {
+                videoContainer.style.display = 'none';
+            }
+        });
+        
+        // Enter browser fullscreen
+        this.enterFullscreen();
+    }
+
+    exitVideoFullscreen() {
+        // Reset video display
+        this.videoGrid.querySelectorAll('.video-container').forEach(videoContainer => {
+            videoContainer.classList.remove('single-video-fullscreen');
+            videoContainer.style.display = '';
+        });
+        
+        // Clear the current video fullscreen
+        this.currentVideoFullscreen = null;
+    }
+
+    extractVideoIdFromSrc(src) {
+        const match = src.match(/\/embed\/([^?&]+)/);
+        return match ? match[1] : null;
+    }
+
+    // Keyboard Shortcuts
+    handleKeyboard(event) {
+        // Don't interfere with input fields
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+            return;
+        }
+
+        switch (event.key) {
+            case 'f':
+            case 'F':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.toggleFullscreen();
+                }
+                break;
+            case 'a':
+            case 'A':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.showVideoModal();
+                }
+                break;
+            case 'c':
+            case 'C':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.clearAllVideos();
+                }
+                break;
+            case 'Escape':
+                if (this.videoModal.style.display === 'block') {
+                    this.hideVideoModal();
+                } else if (this.editVideoModal.style.display === 'block') {
+                    this.hideEditVideoModal();
+                } else if (this.isFullscreen()) {
+                    // Exit fullscreen (this will handle both grid and single video)
+                    this.exitFullscreen();
+                }
+                break;
+        }
+    }
+
+    // Status Updates
+    updateStatus() {
+        const { total } = this.getGridDimensions(this.currentGrid);
+        this.videoCountSpan.textContent = `${this.videos.length} / ${total} videos loaded`;
+        this.gridInfoSpan.textContent = `Grid: ${this.currentGrid}`;
+    }
+
+    // Notifications
+    showNotification(message) {
+        // Create a simple toast notification
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 6px;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            animation: slideInRight 0.3s ease;
+        `;
+        toast.textContent = message;
+        
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+}
+
+// Add CSS for animations
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+    .fullscreen-mode .video-grid {
+        height: 100vh !important;
+    }
+`;
+document.head.appendChild(style);
+
+// Initialize the application
+const app = new YouTubeMultiViewer();
+
+// Make it available globally for inline event handlers
+window.app = app;
