@@ -8,6 +8,7 @@ class YouTubeMultiViewer {
         this.defaultProfile = null;
         this.editingVideoId = null;
         this.iframeReadyStates = new Map(); // Track which iframes are ready
+        this.isMuted = false; // Track mute state for toggle functionality
         
         this.initializeElements();
         this.bindEvents();
@@ -36,6 +37,7 @@ class YouTubeMultiViewer {
         this.addVideosBtn = document.getElementById('addVideos');
         this.playAllBtn = document.getElementById('playAll');
         this.stopAllBtn = document.getElementById('stopAll');
+        this.muteAllBtn = document.getElementById('muteAll');
         this.clearAllBtn = document.getElementById('clearAll');
         this.fullscreenBtn = document.getElementById('fullscreenBtn');
         
@@ -72,6 +74,7 @@ class YouTubeMultiViewer {
         this.addVideosBtn.addEventListener('click', () => this.showVideoModal());
         this.playAllBtn.addEventListener('click', () => this.playAllVideos());
         this.stopAllBtn.addEventListener('click', () => this.stopAllVideos());
+        this.muteAllBtn.addEventListener('click', () => this.muteAllVideos());
         this.clearAllBtn.addEventListener('click', () => this.clearAllVideos());
         
         // Profile management
@@ -371,6 +374,75 @@ class YouTubeMultiViewer {
             console.log(`Pause commands sent to ${commandsSent} iframe(s)`);
         } else {
             this.showNotification('No YouTube videos found to pause');
+        }
+    }
+
+    // Toggle mute/unmute all videos
+    muteAllVideos() {
+        const iframes = this.videoGrid.querySelectorAll('iframe');
+        let commandsSent = 0;
+        let attemptsCount = 0;
+        
+        // Toggle mute state
+        this.isMuted = !this.isMuted;
+        const command = this.isMuted ? 'mute' : 'unMute';
+        const action = this.isMuted ? 'mute' : 'unmute';
+        
+        iframes.forEach((iframe, index) => {
+            // Check if it's a YouTube iframe
+            if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+                attemptsCount++;
+                
+                const sendMuteCommand = () => {
+                    try {
+                        // Multiple command formats to ensure compatibility
+                        const commands = [
+                            `{"event":"command","func":"${command}","args":""}`,
+                            JSON.stringify({"event":"command","func":command,"args":[]}),
+                            JSON.stringify({"event":"command","func":command})
+                        ];
+                        
+                        commands.forEach(cmd => {
+                            iframe.contentWindow.postMessage(cmd, 'https://www.youtube.com');
+                        });
+                        
+                        commandsSent++;
+                    } catch (error) {
+                        console.warn(`Failed to send ${action} command to iframe:`, error);
+                    }
+                };
+
+                // Try sending immediately and with delays
+                sendMuteCommand();
+                setTimeout(sendMuteCommand, 500);
+                setTimeout(sendMuteCommand, 1000);
+            }
+        });
+        
+        // Update button appearance
+        this.updateMuteButtonAppearance();
+        
+        if (attemptsCount > 0) {
+            this.showNotification(`Attempting to ${action} ${attemptsCount} YouTube video(s)...`);
+            console.log(`${action} commands sent to ${commandsSent} iframe(s)`);
+        } else {
+            this.showNotification('No YouTube videos found to ' + action);
+        }
+    }
+
+    // Update mute button appearance
+    updateMuteButtonAppearance() {
+        if (this.muteAllBtn) {
+            const icon = this.muteAllBtn.querySelector('i');
+            if (this.isMuted) {
+                icon.className = 'fas fa-volume-up';
+                this.muteAllBtn.innerHTML = '<i class="fas fa-volume-up"></i> Unmute All';
+                this.muteAllBtn.title = 'Unmute all YouTube videos';
+            } else {
+                icon.className = 'fas fa-volume-mute';
+                this.muteAllBtn.innerHTML = '<i class="fas fa-volume-mute"></i> Mute All';
+                this.muteAllBtn.title = 'Mute all YouTube videos';
+            }
         }
     }
 
@@ -952,6 +1024,13 @@ class YouTubeMultiViewer {
                 if (event.ctrlKey || event.metaKey) {
                     event.preventDefault();
                     this.stopAllVideos();
+                }
+                break;
+            case 'm':
+            case 'M':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.muteAllVideos();
                 }
                 break;
             case 'c':
