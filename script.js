@@ -1114,15 +1114,107 @@ class YouTubeMultiViewer {
         const videoControls = document.querySelectorAll('.video-controls');
         
         if (fullscreen) {
-            // Force hide everything in fullscreen
+            // Hide header and status bar in fullscreen
             header.style.display = 'none';
             statusBar.style.display = 'none';
-            videoControls.forEach(control => control.style.display = 'none');
+            
+            // Keep video controls visible but show only seek buttons
+            videoControls.forEach((control, index) => {
+                // If we're in single video fullscreen, only process controls for the visible video
+                const videoContainer = control.closest('.video-container');
+                const isHiddenVideo = videoContainer && videoContainer.style.display === 'none';
+                
+                // Skip hidden videos in single video fullscreen mode
+                if (this.currentVideoFullscreen && isHiddenVideo) {
+                    return;
+                }
+                
+                // Mark as fullscreen controls (CSS will handle visibility)
+                control.classList.add('fullscreen-controls');
+                
+                // Add auto-hide behavior
+                this.addFullscreenControlsHover(control);
+                
+                // Hide all buttons except seek buttons
+                const allButtons = control.querySelectorAll('.video-control-btn');
+                
+                allButtons.forEach((btn, btnIndex) => {
+                    const hasSeekClass = btn.classList.contains('seek-btn');
+                    
+                    if (hasSeekClass) {
+                        btn.classList.add('fullscreen-seek-btn');
+                        // Ensure the button is clickable
+                        btn.style.pointerEvents = 'auto';
+                        btn.style.zIndex = '999999';
+                        console.log('Seek button setup:', btn.outerHTML.substring(0, 150));
+                        
+                        // Add click event listener to ensure it works
+                        btn.addEventListener('click', (e) => {
+                            console.log('Fullscreen seek button clicked!', e.target);
+                            e.stopPropagation();
+                            // The onclick attribute should still work, but let's make sure
+                            if (btn.onclick) {
+                                btn.onclick(e);
+                            }
+                        });
+                    } else {
+                        btn.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Set up global mouse handler for all fullscreen controls
+            this.setupGlobalFullscreenMouseHandler();
             
         } else {
             header.style.display = 'block';
             statusBar.style.display = 'block';
-            videoControls.forEach(control => control.style.display = 'flex');
+            
+            // Restore all video controls to their original state
+            videoControls.forEach(control => {
+                // Remove fullscreen classes and styles
+                control.classList.remove('fullscreen-controls');
+                
+                // Reset any inline styles that might interfere with CSS hover behavior
+                control.style.display = '';
+                control.style.opacity = '';
+                control.style.visibility = '';
+                control.style.zIndex = '';
+                control.style.pointerEvents = '';
+                control.style.position = '';
+                control.style.top = '';
+                control.style.left = '';
+                control.style.background = '';
+                control.style.padding = '';
+                control.style.borderRadius = '';
+                control.style.transition = '';
+                
+                // Remove fullscreen hover behavior
+                this.removeFullscreenControlsHover(control);
+                
+                // Restore all buttons to their original state
+                const allButtons = control.querySelectorAll('.video-control-btn');
+                allButtons.forEach(btn => {
+                    // Reset all inline styles
+                    btn.style.display = '';
+                    btn.style.visibility = '';
+                    btn.style.zIndex = '';
+                    btn.style.pointerEvents = '';
+                    btn.style.background = '';
+                    btn.style.backgroundColor = '';
+                    btn.style.border = '';
+                    btn.style.color = '';
+                    btn.style.fontSize = '';
+                    btn.style.padding = '';
+                    btn.style.margin = '';
+                    
+                    // Remove fullscreen classes
+                    btn.classList.remove('fullscreen-seek-btn');
+                });
+            });
+            
+            // Remove global fullscreen mouse handler
+            this.removeGlobalFullscreenMouseHandler();
             
             // If we were in single video fullscreen mode, exit it
             if (this.currentVideoFullscreen) {
@@ -1141,6 +1233,98 @@ class YouTubeMultiViewer {
                 this.fullscreenBtn.title = 'Enter Fullscreen';
             }
         }
+    }
+
+    addFullscreenControlsHover(controlElement) {
+        // Store timeout reference on the element
+        controlElement._hideTimeout = null;
+        
+        // Initially hide the controls
+        controlElement.classList.add('fullscreen-hidden');
+    }
+    
+    // Global fullscreen mouse handler (called once for all videos)
+    setupGlobalFullscreenMouseHandler() {
+        if (this._globalFullscreenHandler) return; // Already set up
+        
+        let lastHoveredContainer = null;
+        
+        const globalMouseMoveHandler = (e) => {
+            if (!this.isFullscreen()) return;
+            
+            // Find which video container the mouse is over
+            const allVideoContainers = document.querySelectorAll('.video-container');
+            let currentContainer = null;
+            
+            allVideoContainers.forEach(container => {
+                const rect = container.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right &&
+                    e.clientY >= rect.top && e.clientY <= rect.bottom &&
+                    container.style.display !== 'none') {
+                    currentContainer = container;
+                }
+            });
+            
+            // If we've moved to a different container or no container
+            if (currentContainer !== lastHoveredContainer) {
+                // Hide all controls first
+                const allControls = document.querySelectorAll('.video-controls.fullscreen-controls');
+                allControls.forEach(control => {
+                    clearTimeout(control._hideTimeout);
+                    control.classList.remove('fullscreen-visible');
+                    control.classList.add('fullscreen-hidden');
+                });
+                
+                // Show controls for current container if any
+                if (currentContainer) {
+                    const currentControl = currentContainer.querySelector('.video-controls.fullscreen-controls');
+                    if (currentControl) {
+                        clearTimeout(currentControl._hideTimeout);
+                        currentControl.classList.remove('fullscreen-hidden');
+                        currentControl.classList.add('fullscreen-visible');
+                        
+                        // Set timer to hide after 2 seconds of no movement
+                        currentControl._hideTimeout = setTimeout(() => {
+                            currentControl.classList.remove('fullscreen-visible');
+                            currentControl.classList.add('fullscreen-hidden');
+                        }, 2000);
+                    }
+                }
+                
+                lastHoveredContainer = currentContainer;
+            } else if (currentContainer) {
+                // Still over the same container, reset the hide timer
+                const currentControl = currentContainer.querySelector('.video-controls.fullscreen-controls');
+                if (currentControl && currentControl.classList.contains('fullscreen-visible')) {
+                    clearTimeout(currentControl._hideTimeout);
+                    currentControl._hideTimeout = setTimeout(() => {
+                        currentControl.classList.remove('fullscreen-visible');
+                        currentControl.classList.add('fullscreen-hidden');
+                    }, 2000);
+                }
+            }
+        };
+        
+        document.addEventListener('mousemove', globalMouseMoveHandler);
+        this._globalFullscreenHandler = globalMouseMoveHandler;
+    }
+    
+    removeGlobalFullscreenMouseHandler() {
+        if (this._globalFullscreenHandler) {
+            document.removeEventListener('mousemove', this._globalFullscreenHandler);
+            delete this._globalFullscreenHandler;
+        }
+    }
+    
+    removeFullscreenControlsHover(controlElement) {
+        // Clear any pending timeout
+        if (controlElement._hideTimeout) {
+            clearTimeout(controlElement._hideTimeout);
+            delete controlElement._hideTimeout;
+        }
+        
+        // Remove fullscreen visibility classes
+        controlElement.classList.remove('fullscreen-hidden', 'fullscreen-visible');
     }
 
     toggleVideoFullscreen(videoId) {

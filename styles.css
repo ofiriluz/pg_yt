@@ -317,6 +317,21 @@ body.fullscreen-mode {
     transition: opacity 0.3s ease;
 }
 
+/* Fullscreen seek button styling */
+.fullscreen-seek-btn {
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 18px !important;
+    background: rgba(108, 66, 193, 0.9) !important;
+    border: 2px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.fullscreen-seek-btn:hover {
+    background: rgba(108, 66, 193, 1) !important;
+    border-color: rgba(255, 255, 255, 0.6) !important;
+    transform: scale(1.2) !important;
+}
+
 /* Empty Grid Placeholder */
 .grid-placeholder {
     grid-column: 1 / -1;
@@ -573,6 +588,59 @@ body.fullscreen-mode {
 
 .fullscreen-mode .video-controls {
     display: none !important;
+}
+
+/* Fullscreen controls visibility - show only seek buttons */
+.fullscreen-mode .video-controls.fullscreen-controls {
+    display: flex !important;
+    visibility: visible !important;
+    z-index: 99999 !important;
+    position: absolute !important;
+    top: 10px !important;
+    left: 10px !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    padding: 0.5rem !important;
+    border-radius: 8px !important;
+    pointer-events: auto !important;
+    transition: opacity 0.3s ease !important;
+}
+
+/* Fullscreen visibility states */
+.fullscreen-mode .video-controls.fullscreen-controls.fullscreen-visible {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+.fullscreen-mode .video-controls.fullscreen-controls.fullscreen-hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Hide all buttons in fullscreen controls by default */
+.fullscreen-mode .fullscreen-controls .video-control-btn {
+    display: none !important;
+}
+
+/* Show only seek buttons in fullscreen */
+.fullscreen-mode .fullscreen-controls .video-control-btn.fullscreen-seek-btn {
+    display: flex !important;
+    visibility: visible !important;
+    background-color: rgba(0, 0, 0, 0.9) !important;
+    border: 2px solid white !important;
+    color: white !important;
+    font-size: 1.2rem !important;
+    padding: 0.8rem 1rem !important;
+    margin: 0 0.3rem !important;
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+.fullscreen-mode .fullscreen-controls .video-control-btn.fullscreen-seek-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    transform: scale(1.05) !important;
 }
 
 /* Responsive Design */
