@@ -37,6 +37,8 @@ class YouTubeMultiViewer {
         this.addVideosBtn = document.getElementById('addVideos');
         this.playAllBtn = document.getElementById('playAll');
         this.stopAllBtn = document.getElementById('stopAll');
+        this.seekBackAllBtn = document.getElementById('seekBackAll');
+        this.seekForwardAllBtn = document.getElementById('seekForwardAll');
         this.muteAllBtn = document.getElementById('muteAll');
         this.clearAllBtn = document.getElementById('clearAll');
         this.fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -74,6 +76,8 @@ class YouTubeMultiViewer {
         this.addVideosBtn.addEventListener('click', () => this.showVideoModal());
         this.playAllBtn.addEventListener('click', () => this.playAllVideos());
         this.stopAllBtn.addEventListener('click', () => this.stopAllVideos());
+        this.seekBackAllBtn.addEventListener('click', () => this.seekAllVideosBack());
+        this.seekForwardAllBtn.addEventListener('click', () => this.seekAllVideosForward());
         this.muteAllBtn.addEventListener('click', () => this.muteAllVideos());
         this.clearAllBtn.addEventListener('click', () => this.clearAllVideos());
         
@@ -153,6 +157,52 @@ class YouTubeMultiViewer {
             try {
                 const data = JSON.parse(event.data);
                 console.log('Parsed YouTube data:', data);
+                
+                // Handle getCurrentTime response for seeking
+                if (data.event === 'infoDelivery' && data.info && typeof data.info.currentTime === 'number') {
+                    const iframe = Array.from(document.querySelectorAll('iframe')).find(
+                        iframe => iframe.contentWindow === event.source
+                    );
+                    
+                    if (iframe && iframe.dataset.seekDirection) {
+                        const currentTime = data.info.currentTime;
+                        const seekDirection = iframe.dataset.seekDirection;
+                        const isIndividualSeek = iframe.dataset.individualSeek === 'true';
+                        let newTime;
+                        
+                        if (seekDirection === 'back') {
+                            newTime = Math.max(0, currentTime - 10);
+                        } else if (seekDirection === 'forward') {
+                            newTime = currentTime + 10;
+                        }
+                        
+                        // Send seekTo command
+                        const seekCommand = {
+                            event: 'command',
+                            func: 'seekTo',
+                            args: [newTime, true]
+                        };
+                        
+                        iframe.contentWindow.postMessage(JSON.stringify(seekCommand), 'https://www.youtube.com');
+                        
+                        // Show notification for individual seeks
+                        if (isIndividualSeek) {
+                            const videoId = iframe.id.replace('youtube-iframe-', '');
+                            const direction = seekDirection === 'back' ? 'back' : 'forward';
+                            const timeStr = this.formatTime(newTime);
+                            this.showNotification(`Video ${direction} 10s → ${timeStr}`);
+                            
+                            // Show time overlay on the video
+                            this.showVideoTimeOverlay(videoId, newTime);
+                        }
+                        
+                        // Clear the seek direction and individual seek flag
+                        delete iframe.dataset.seekDirection;
+                        delete iframe.dataset.individualSeek;
+                        
+                        console.log(`Seeking ${seekDirection} to ${newTime}s from ${currentTime}s on ${isIndividualSeek ? 'individual' : 'all'} video(s)`);
+                    }
+                }
                 
                 // Track iframe readiness for various events
                 if (data.event === 'video-progress' || data.event === 'onReady' || data.event === 'onStateChange') {
@@ -446,6 +496,96 @@ class YouTubeMultiViewer {
         }
     }
 
+    // Seek all videos backward by 10 seconds
+    seekAllVideosBack() {
+        const iframes = this.videoGrid.querySelectorAll('iframe');
+        let commandsSent = 0;
+        let attemptsCount = 0;
+        
+        iframes.forEach((iframe, index) => {
+            // Check if it's a YouTube iframe
+            if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+                attemptsCount++;
+                
+                const sendSeekBackCommand = () => {
+                    try {
+                        // Send getCurrentTime request first, then seek back
+                        const getCurrentTimeCommand = {
+                            event: 'command',
+                            func: 'getCurrentTime',
+                            args: []
+                        };
+                        
+                        // Store iframe reference for the response
+                        iframe.dataset.seekDirection = 'back';
+                        
+                        iframe.contentWindow.postMessage(JSON.stringify(getCurrentTimeCommand), 'https://www.youtube.com');
+                        
+                        commandsSent++;
+                    } catch (error) {
+                        console.warn('Failed to send seek back command to iframe:', error);
+                    }
+                };
+
+                // Try sending immediately and with delays
+                sendSeekBackCommand();
+                setTimeout(sendSeekBackCommand, 500);
+            }
+        });
+        
+        if (attemptsCount > 0) {
+            this.showNotification(`Seeking back 10 seconds on ${attemptsCount} YouTube video(s)...`);
+            console.log(`Seek back commands sent to ${commandsSent} iframe(s)`);
+        } else {
+            this.showNotification('No YouTube videos found to seek');
+        }
+    }
+
+    // Seek all videos forward by 10 seconds
+    seekAllVideosForward() {
+        const iframes = this.videoGrid.querySelectorAll('iframe');
+        let commandsSent = 0;
+        let attemptsCount = 0;
+        
+        iframes.forEach((iframe, index) => {
+            // Check if it's a YouTube iframe
+            if (iframe.src && iframe.src.includes('youtube.com/embed')) {
+                attemptsCount++;
+                
+                const sendSeekForwardCommand = () => {
+                    try {
+                        // Send getCurrentTime request first, then seek forward
+                        const getCurrentTimeCommand = {
+                            event: 'command',
+                            func: 'getCurrentTime',
+                            args: []
+                        };
+                        
+                        // Store iframe reference for the response
+                        iframe.dataset.seekDirection = 'forward';
+                        
+                        iframe.contentWindow.postMessage(JSON.stringify(getCurrentTimeCommand), 'https://www.youtube.com');
+                        
+                        commandsSent++;
+                    } catch (error) {
+                        console.warn('Failed to send seek forward command to iframe:', error);
+                    }
+                };
+
+                // Try sending immediately and with delays
+                sendSeekForwardCommand();
+                setTimeout(sendSeekForwardCommand, 500);
+            }
+        });
+        
+        if (attemptsCount > 0) {
+            this.showNotification(`Seeking forward 10 seconds on ${attemptsCount} YouTube video(s)...`);
+            console.log(`Seek forward commands sent to ${commandsSent} iframe(s)`);
+        } else {
+            this.showNotification('No YouTube videos found to seek');
+        }
+    }
+
     // Edit video URL functionality
     editVideoUrl(videoId) {
         const video = this.videos.find(v => v.id === videoId);
@@ -565,6 +705,61 @@ class YouTubeMultiViewer {
         textArea.remove();
     }
 
+    // Individual video seek functionality
+    seekVideoBack(videoId) {
+        const iframe = document.getElementById(`youtube-iframe-${videoId}`);
+        if (!iframe || !iframe.src.includes('youtube.com/embed')) {
+            console.warn('YouTube iframe not found for video:', videoId);
+            return;
+        }
+
+        try {
+            // Send getCurrentTime request first
+            const getCurrentTimeCommand = {
+                event: 'command',
+                func: 'getCurrentTime',
+                args: []
+            };
+            
+            // Store seek direction for this specific iframe
+            iframe.dataset.seekDirection = 'back';
+            iframe.dataset.individualSeek = 'true';
+            
+            iframe.contentWindow.postMessage(JSON.stringify(getCurrentTimeCommand), 'https://www.youtube.com');
+            
+            console.log(`Seeking back 10s on video: ${videoId}`);
+        } catch (error) {
+            console.warn('Failed to seek back on video:', videoId, error);
+        }
+    }
+
+    seekVideoForward(videoId) {
+        const iframe = document.getElementById(`youtube-iframe-${videoId}`);
+        if (!iframe || !iframe.src.includes('youtube.com/embed')) {
+            console.warn('YouTube iframe not found for video:', videoId);
+            return;
+        }
+
+        try {
+            // Send getCurrentTime request first
+            const getCurrentTimeCommand = {
+                event: 'command',
+                func: 'getCurrentTime',
+                args: []
+            };
+            
+            // Store seek direction for this specific iframe
+            iframe.dataset.seekDirection = 'forward';
+            iframe.dataset.individualSeek = 'true';
+            
+            iframe.contentWindow.postMessage(JSON.stringify(getCurrentTimeCommand), 'https://www.youtube.com');
+            
+            console.log(`Seeking forward 10s on video: ${videoId}`);
+        } catch (error) {
+            console.warn('Failed to seek forward on video:', videoId, error);
+        }
+    }
+
     // Grid Management
     updateGrid() {
         const { cols, rows, total } = this.getGridDimensions(this.currentGrid);
@@ -636,6 +831,12 @@ class YouTubeMultiViewer {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
             </iframe>
             <div class="video-controls">
+                <button class="video-control-btn seek-btn" onclick="app.seekVideoBack('${video.id}')" title="Seek back 10s">
+                    <i class="fas fa-backward"></i>
+                </button>
+                <button class="video-control-btn seek-btn" onclick="app.seekVideoForward('${video.id}')" title="Seek forward 10s">
+                    <i class="fas fa-forward"></i>
+                </button>
                 <button class="video-control-btn" onclick="app.editVideoUrl('${video.id}')" title="Edit URL">
                     <i class="fas fa-edit"></i>
                 </button>
@@ -1040,6 +1241,18 @@ class YouTubeMultiViewer {
                     this.clearAllVideos();
                 }
                 break;
+            case 'ArrowLeft':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.seekAllVideosBack();
+                }
+                break;
+            case 'ArrowRight':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.seekAllVideosForward();
+                }
+                break;
             case 'Escape':
                 if (this.videoModal.style.display === 'block') {
                     this.hideVideoModal();
@@ -1051,6 +1264,44 @@ class YouTubeMultiViewer {
                 }
                 break;
         }
+    }
+
+    // Helper method to format time in MM:SS format
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    // Show time overlay on specific video
+    showVideoTimeOverlay(videoId, currentTime) {
+        const videoContainer = document.querySelector(`#youtube-iframe-${videoId}`).parentElement;
+        if (!videoContainer) return;
+
+        // Remove existing overlay if present
+        const existingOverlay = videoContainer.querySelector('.time-overlay');
+        if (existingOverlay) {
+            existingOverlay.remove();
+        }
+
+        // Create time overlay
+        const timeOverlay = document.createElement('div');
+        timeOverlay.className = 'time-overlay';
+        timeOverlay.textContent = this.formatTime(currentTime);
+        
+        videoContainer.appendChild(timeOverlay);
+
+        // Auto-hide after 2 seconds
+        setTimeout(() => {
+            if (timeOverlay && timeOverlay.parentElement) {
+                timeOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    if (timeOverlay && timeOverlay.parentElement) {
+                        timeOverlay.remove();
+                    }
+                }, 300);
+            }
+        }, 2000);
     }
 
     // Status Updates
